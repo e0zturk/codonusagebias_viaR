@@ -1,0 +1,366 @@
+---
+title: "CUB"
+author: "Eusturc.E"
+date: "2026-01-15"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{#r}
+install.packages('BiocManager')
+install.packages()["BiocManager",]
+```
+
+```{#r}
+install.packages('coRdon')
+install.packages()["coRdon",]
+```
+
+```{#r}
+install.packages('cubar')
+install.packages()["cubar",]
+```
+
+Install packages and check them
+
+```{r}
+library(BiocGenerics)
+library(Biostrings)
+library(cubar)
+library(coRdon)
+```
+
+You should get a cds data set in ensembl bacteria.
+
+    Follow them;
+    https://ftp.ensemblgenomes.ebi.ac.uk/
+    Index of /pub/bacteria/release-62(last release)/fasta/{youselectedcollection}/{yourbacteria}/cds
+    
+Choose your path files ('...cds.all.fa.gz' file) and run to 'readSet(*your_cds_file_path*)'
+
+    unfortunately R system is attiuding as ignorance to your files pathway, So you need two way to
+    recognize your files on R system:
+    1. my_path = file.choose()
+    2. my_path = r(""C:\Users\Hp\Documents\Rfiles\Enteroco...3v1.cds.all.fa.gz"")
+
+```{r}
+my_path = file.choose()
+entereco_fea <- readSet(file=my_path)
+entr_table <- codonTable(entereco_fea)
+# it was shown in outputs.
+entereco_fea
+entr_table
+```
+
+
+Your data not organized, you should compose them how to using 'check_cds(*your_cds_valuable*)'
+
+Also some DNA sequence could involve unknown string character like "-", "_" in your cds_file. It reasons some programmatically problems in R system. Especially, you need to clean your bacteria DNA strings' why to a good result. Follow in the next chunk completely;
+
+```{r}
+raw_seq <- as.character(entereco_fea)
+clean_seq <- gsub("[^ACGTNacgtn]","",raw_seq)
+clean_cds <- DNAStringSet(clean_seq)
+clean_set <- check_cds(clean_cds)
+head(clean_set)
+```
+what is mean RSCU and GC3s analysis in Codon Usage Bias
+
+   Which codons are preferred by bacterial genomic for tRNA? Well, That answers to this question.
+
+    There are an average of four codon as same as aminoasit translation.
+
+    GCU
+    GCC     ____
+    GCA     ____      A 
+    GCG
+    
+    Those codons are equavelent of Alanin.
+    Normally, it should be used percent of %25. But in bacterial genom, this rate can change.
+    Cubar package counts rate of codon usage bias. It provides quantative evidence of translational
+    selection to us. Formuling:
+     
+          
+              ____                      Observed number 
+     RSCU               ________________________________________________________
+              ____
+                            total amino acid count / number of synonymous codons 
+    
+    if RSCU value > 1 , it's preferred codon.
+    RSCU values less than 1.0 indicate 'under-represented' or 'avoided' codons.
+                            
+    It's a fundemantel fact that G-C pairs are held together by three hydrogen bonds. G-C pairs
+    thermally more stable than A-T pairs. G-C pairs usage allows us to understand how bacterial genomes
+    evolve under natural selection and mutational pressure to optimize their environmental adaptation.
+    
+    Also Cubar package provides us counting GC3s values.
+    
+Making Codon frequency table using 'count_codons(*your_cleaned_cds_data*)' and 'est_rscu(*your_frequence_table*)'
+GC3s values counting with 'get_gc3s(*your_frequence_table*)'
+
+```{r}
+codon_frequence <- count_codons(clean_set)
+rscu_values <- est_rscu(codon_frequence)
+rscu_values
+```
+
+
+gc3s values exist between 0-1. It need to multiple with 100. Then it explain how much used G-C pairs by bacteria.
+
+```{r}
+gc3s_value <- get_gc3s(codon_frequence)
+gc3s_value
+# mean of gc3s value
+meanofgc3s <- mean(gc3s_value)
+meanofgc3s
+```
+
+a gene can be insistent which usage codon. It's called ENS (effective number of codons). ENS values are between 20-61. 61 shows randomly distribution and 20 mean to strength bias. 
+
+Usage: 'get_enc(*your_frequence_table*)'
+```{r}
+enc_values = get_enc(codon_frequence)
+summary(enc_values)
+```
+
+
+Translational efficiency
+
+A gene of codon sequence could be considered 'quality'(high adaptation) if it was more compatible with the bacteria's tRNA pool.
+
+We are using two approach to measuring:
+
+    The first method involves using FKPM measurements, which are build upon real laboratory data. 
+    However     this method requires external experimental files. But we assume you do not have.
+    Therefore, we'll follow     second approach.
+    
+    The ribosomal reference genes are used in second method. Because it's ribosomal protein what are
+    always     mostly and quickly produced proteins in the cell. 
+    
+    The bacteria genes should be like similar to ribosomal genes if they classified high adaptative   
+    expressional gene.
+
+In this case we should coRdon library for second method called MILC (Measure Independent of Length and Composition) analysis.
+
+Follow in chunk to 'MILC(*your_cds_valuable*, self = TRUE, ribosomal = TRUE)'
+
+```{r}
+milc_values = MILC(entr_table, self = TRUE, ribosomal = TRUE, filtering= 'hard')
+summary(milc_values)
+
+```
+
+RSCU matrix gives us ideal gene rate as between 0-1 value. Cubar package (cai) measures and provides percentes all cds of genes according to RSCU values in the codon frequency matrix.
+
+Follow next chunk to 'get_cai(*your_frequence_table*, *your_rscu_valuable*, level = *'subfam'*)'
+
+```{r}
+cai_values <- get_cai(codon_frequence,rscu_values,'subfam')
+head(cai_values)
+```
+
+Drawing Graphics
+
+```{r}
+#install.packages('ggplot2')
+library(ggplot2)
+```
+
+    visit to : https://github.com/rstudio/cheatsheets/blob/main/data-visualization.pdf
+    
+First we must create a data frame using enc and cai values.
+
+```{r}
+df <- data.frame(ENC = enc_values, CAI = cai_values, GC3s = gc3s_value)
+```
+
+Set orderly ggplot features with helping by github/ggplot2/cheatsheets
+
+    function map;
+    
+    ggplot( data = df, aes( x = coordinateX, y = coordinateY, color= *heatmap color feature* ) + geom*(*one_variable*..)
+     + scale_<aesthetic>_<method>()  +   labs(title = **, x = **, y = **)
+    
+    """
+    SCALE
+    
+    Aesthetic (Estetik): The property you wish to change (x, y, fill, colour, size, shape).
+    
+    Method (Yöntem): The method selected according to the type of data (continuous, discrete, manual,
+    gradient).
+    
+    """
+    
+```{r}
+ggplot(data = df, aes(x = ENC, y = CAI, color = GC3s)) + geom_point(position = "jitter") + scale_colour_gradient(low= 'blue', high = 'yellow') + labs(title = 'Codon Usage Relationship', x = 'ENC', y = 'CAI')
+
+```
+
+ B-plot drawing with coRdon
+ 
+ Firstly you need to annotation list like '#K00001' to KO annotation value contained in the B-plot parameters for every sequence. This processing is performed onto GhostKOALA. Previously you should translate your cds_file to '.fasta' file and then get a '.fasta' file. Run the next chunks and control your 'Rfiles' directory.
+ 
+```{r}
+library(coRdon)
+library(Biostrings)
+
+entereco_proteins <- translate(clean_set, 
+                               genetic.code = getGeneticCode("11"), 
+                               if.fuzzy.codon = "solve")
+
+writeXStringSet(entereco_proteins, filepath = "entereco_proteins.fasta")
+```
+
+
+Afterwards follow this steps ordinarly:
+
+    1. enter https://www.kegg.jp/ghostkoala/
+    2. upload your prepared .fasta file in "Enter fasta sequence or upload files" blank
+    3. select reference genes dataset as "Prokaryotes + Viruses"
+    4. submit your e-mail adress only instutionally. 
+    5. check your e-mail and download "user_ko.txt" file to 'Rfiles' directory
+    6. set your ko.txt on Rfiles follow in the next chunks
+ 
+ 
+ Probably, your 'user_ko.txt file' has free ('unknown') strings in columns (percentage of next output).
+ It is required to cleaning and ordering.
+    
+    Follow them; 
+    'read.table(*your_ko_txt*, header = FALSE, sep = "\t", fill = TRUE, na.strings = c("", "NA"))'
+    
+    Secondary, you should verify to correct matching your Gen ID (in ko_raw) and protein names (in
+    your clean_set).
+    
+    and, rename your clean_set default (long) names, please view codes on the chunk;
+    ' sub(" .*", "", *old_names*) '
+        
+    
+    taking index:
+    match(names(clean_set), ko_raw$'Gen ID')
+    
+    Eventually, NA (Not available) change to "unknown" how using
+    '*your_ko_valuable*[is.na(*your_ko_valuable*)]'
+    
+    
+```{r}
+ko_raw <- read.table("user_ko.txt", header = FALSE, sep = "\t", fill = TRUE, na.strings = c("", "NA"))
+colnames(ko_raw) <- c("Gen ID", "KO")
+
+# What percentage of available KO annotations? 
+cat('%', (100 * mean(is.na(ko_raw$KO))))
+
+#it's very important what rename clean_set valuables 
+names_o <- names(clean_set)
+names_n <- sub(" .*", "", names_o)
+names(clean_set) <- names_n
+
+index_ko <- match(names(clean_set), ko_raw$`Gen ID`)
+get_ko <- ko_raw$KO[index_ko]
+get_ko[is.na(get_ko)] <- "unknown"
+#view
+#get_ko
+``` 
+
+Lastly, you would create a new milc valuable for using into B-plot graph. 
+
+     ' setKO(*your_old_table*, as.character(*your_ko_valuable*)) '
+     ' MILC(*your_new_table*, self = TRUE, ribosomal = TRUE) '
+ 
+ 
+```{r}
+entr_table <- codonTable(clean_set)
+
+new_entr_table <- setKO(entr_table, as.character(get_ko))
+
+
+new_milc_values <- MILC(new_entr_table, self = TRUE, ribosomal = TRUE)
+colnames(new_milc_values)
+```
+ 
+ You are ready for drawing B-plot Graph, run in the next chunk;
+ 
+  ' Bplot(  x = "ribosomal", 
+            y = "self", 
+            data = as.matrix(*your_new_milc_value*), 
+            ribosomal = TRUE,
+            annotations =getKO(*your_new_frequence_table*)
+            size = *it's node width*) +
+            labs(title, x, y)'
+
+
+```{r}
+library(coRdon)
+Bplot(x = "ribosomal", y = "self",
+      data = as.matrix(new_milc_values),
+      ribosomal = TRUE, 
+      annotations = getKO(new_entr_table),
+      size = 2) + 
+      labs(title = "E. faecalis B-Plot: Translational Selection",
+       x = "MILC Distance from Average (Self)", 
+       y = "MILC Distance from Ribosomal Reference")
+```
+
+     """
+     Interpretation of the B-plot:
+     
+     Y-axis (Distance to Ribosomal Reference): The lower the Y-axis value, the more the gene is optimized for
+     fast protein production.
+     
+     X-axis (Distance to Genome Average): The X-axis measures how much a gene deviates (differs) from the
+     general average of the genome.
+     
+     Conclusion: The relationship between these two axes provides mathematical proof of the bacteria’s growth
+     rate and survival strategy.
+     """ 
+Editing by AI
+
+Now that we have KO identifiers, We try to analyze which are used biological pathways by the bacteria. An expression level predictor based on MILC was MELP, counts prediction of expression level looking at DNA strings.
+
+
+Let's continue how to analysis of KO pathways prediction;
+    MELP(*your_frequence_table*, ribosomal = TRUE, filtering = 'hard')
+     
+    afterwards, as performed in the previous chunk you should perform 'getKO(*your_frequence_table*)'
+    
+    Then following with create a contingeny table like; 
+    
+    crossTab(*your_annot_valuable*, as.numeric(*your_melp_data*), threshold = 1L)
+    
+```{r}
+melp_vals <- MELP(new_entr_table, ribosomal = TRUE, filtering = 'hard')
+
+get_annots <- getKO(new_entr_table)
+
+ct <- crossTab(get_annots, as.numeric(melp_vals), threshold = 1L)
+```
+
+NOW is visualization time
+
+    follow this;
+    
+    first you translate KO numbers to pathways data like
+    
+    reduceCrossTab(*your_croostab_th*, target = 'pathway')
+    
+    secondly, we are going to in Encrichment test,
+    
+    ' enrichment(*your_pathway_data*) ' 
+    
+    Eventually finish with drawing 'enrichBarplot()'
+
+```{r}
+ct_path <- reduceCrossTab(ct, target = 'pathway')
+
+enr_results <- enrichment(ct_path)
+
+enrichBarplot(enr_results, 
+              variable = "enrich", 
+              pvalue = "pvals") + 
+  theme_bw() +
+  labs(title = "E. faecalis Pathway Enrichment Analysis",
+       subtitle = "Based on MELP expression prediction")
+
+```
